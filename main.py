@@ -164,6 +164,8 @@ def main():
                         consec = 0
                 if (consec >= 5 or consecInc >= 7):
                     print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
+                    print(f"Autostop applied due to {'consecutive loss increase' if (consecInc >= 7) else 'threshold'}")
+                    print(f"Lowest Test Loss: {min(epochLoss)}")
                     results.append([trainLoss, testLoss])
                     break
 
