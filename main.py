@@ -124,7 +124,7 @@ def main():
         # if (i > 0):
         #     model.reset_weights() 
 
-        print(f"Rep: {i + 1}")
+        print(f"\nRep: {i + 1}")
         for epoch in range(args.epochs):
             trainLoss = train(trainLoader, epoch, model, optimizer)
             testLoss = test(testLoader, model)
