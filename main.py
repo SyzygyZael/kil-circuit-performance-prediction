@@ -8,6 +8,8 @@ from Circuitmodel import CircuitModel
 import pandas as pd
 from CktGNNSubGParser import CktGNNSubGParser as cph
 import random
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 parser = argparse.ArgumentParser(description="Train a practice GCN model on Enzyme data")
 parser.add_argument('--epochs', type=int, default=100)
@@ -15,6 +17,7 @@ parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--batch', type=int, default=32)
 parser.add_argument('--reps', type=int, default=1)
 parser.add_argument('--threshold', type=float, default=0.0)
+parser.add_argument('--graph', type=bool, default=False)
 
 args = parser.parse_args()
 
@@ -116,6 +119,8 @@ def main():
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
+        epochLoss = []
+        epochLst = []
         testLossTmp = []
         consec = 0
         consecInc = 0
@@ -138,6 +143,9 @@ def main():
             if ((epoch + 1) == args.epochs):
                 results.append([trainLoss, testLoss])
 
+            epochLoss.append(testLoss)
+            epochLst.append(epoch + 1)
+
             # break after change is minimal 3 consecutive times
             if (autoStop[0] > 0.0):
                 if (len(testLossTmp) <= 1):
@@ -159,6 +167,15 @@ def main():
                     results.append([trainLoss, testLoss])
                     break
 
+        if (args.graph):
+            plt.figure(figsize=(8, 6))
+            plt.title("Test Loss", fontsize = 18)
+            plt.ylabel("Loss", fontsize=18)
+            plt.xlabel("Epoch", fontsize=18)
+            
+            sns.regplot(x = epochLst, y = epochLoss, order=2)
+            plt.savefig(f"Test Loss Rep {i}", dpi=300)
+            # plt.show()
 
     
     print('\n')
