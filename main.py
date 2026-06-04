@@ -143,16 +143,22 @@ def main():
                 if (len(testLossTmp) <= 1):
                     testLossTmp.append(testLoss)
                 else:
+                    if (testLossTmp[1] > testLossTmp[0]):
+                        consecInc +=1
+                    else:
+                        consecInc = 0
+                    
                     change = abs(testLossTmp[1] - testLossTmp[0])
                     testLossTmp = []
                     if (change <= 0.001):
                         consec += 1
                     else:
                         consec = 0
-                if (consec >= 5):
+                if (consec >= 5 or consecInc >= 7):
                     print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                     results.append([trainLoss, testLoss])
                     break
+
 
     
     print('\n')
