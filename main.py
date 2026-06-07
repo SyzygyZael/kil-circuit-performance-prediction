@@ -28,6 +28,7 @@ pre_transform = T.LocalDegreeProfile()
 
 cktPath = "C:/Users/Kevin Nesbitt/Documents/Coding/Python/KIL/CktGNN Clone/CktGNN/OCB/CktBench101"
 
+# normalization
 df = pd.read_csv(cktPath + "/perform101.csv")
 rawPerfMatrix = df[['gain', 'bw', 'pm']].values
 perfMeans = rawPerfMatrix.mean(axis=0)
