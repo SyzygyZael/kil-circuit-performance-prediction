@@ -42,3 +42,4 @@ class CircuitModel(nn.Module):
                 for sub_layer in layer:
                     if hasattr(sub_layer, 'reset_parameters'):
                         sub_layer.reset_parameters()
+
