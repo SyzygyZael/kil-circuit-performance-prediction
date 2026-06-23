@@ -21,10 +21,15 @@ parser.add_argument('--batch', type=int, default=32)
 parser.add_argument('--reps', type=int, default=1)
 parser.add_argument('--threshold', type=float, default=0.0)
 parser.add_argument('--graph', type=bool, default=False)
+parser.add_argument('--gpu', type=bool, default=False)
 
 args = parser.parse_args()
 
 autoStop = [args.threshold]
+
+print("\nGPU Training is available" if (torch.cuda.is_available()) else "\nGPU Training unavailable")
+device = torch.device('cuda' if (torch.cuda.is_available() and args.gpu) else 'cpu')
+print(f"Device: {device}\n")
 
 # model = CircuitModel(convertedData[0])
 # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -44,10 +49,10 @@ def train(loader, curEpoch, model, optimizer):
         optimizer.zero_grad()
 
         # runs a forward pass through the model
-        pred = model(i.x, i.batch, i.edge_index)
+        pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
 
         # performs MSE loss
-        loss = lossFn(pred, i.y)
+        loss = lossFn(pred, i.y.to(device))
 
         # computes gradients of the loss with respect to each weight
         loss.backward()
@@ -69,8 +74,8 @@ def test(loader, model):
 
     with torch.no_grad():
         for i in loader:
-            pred = model(i.x, i.batch, i.edge_index)
-            loss = lossFn(pred, i.y)
+            pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
+            loss = lossFn(pred, i.y.to(device))
             totalLoss += loss.item() * i.num_graphs
     
     return totalLoss / len(loader.dataset)
@@ -81,7 +86,6 @@ def shuffleDataset(data):
     random.shuffle(data)
     trainSplitPercent = int(len(data)*0.85)
     
-
     # datasplit
     trainSet = data[:trainSplitPercent]
     testSet = data[trainSplitPercent:]
@@ -92,29 +96,8 @@ def shuffleDataset(data):
 
     return train_loader, test_loader
 
-def initGAT(data):
-    model = GATwMLPHead(data[0])
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
-
-    return model, optimizer, scheduler
-
-def initGCN(data):
-    model = GCNwMLPHead(data[0])
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
-
-    return model, optimizer, scheduler
-
-def initSAGE(data):
-    model = SAGEwMLPHead(data[0])
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
-
-    return model, optimizer, scheduler
-
 def main():
-    print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
+    print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n--gpu {args.gpu}\n\n")
 
     with open("config.json") as f:
         config = json.load(f)
@@ -179,6 +162,8 @@ def main():
             for i, model in enumerate(models):
                 print(f"\nModel: {modelTypes[i]}")
 
+                model = model.to(device)
+
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
@@ -242,8 +227,9 @@ def main():
                     plt.ylabel("Loss", fontsize=18)
                     plt.xlabel("Epoch", fontsize=18)
                     
-                    sns.regplot(x = epochLst, y = epochLoss, order=2 if (args.epochs >= 10) else 1)
+                    sns.lineplot(x = epochLst, y = epochLoss)
                     plt.savefig(filePath, dpi=300)
+                    plt.close()
                     # plt.show()
 
         for i in range(len(results)):
