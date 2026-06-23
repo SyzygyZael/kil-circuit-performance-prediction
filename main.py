@@ -115,10 +115,21 @@ def main():
     cktPath = "C:/Users/Kevin Nesbitt/Documents/Coding/Python/KIL/CktGNN Clone/CktGNN/OCB/CktBench101"
     df = pd.read_csv(cktPath + "/perform101.csv")
 
+    specs = ['gain', 'bw', 'pm', 'fom']
     modelTypes = ['GCN', 'GAT', 'SAGE']
-    losses = []
+    summary = {
+        'gain':0, 
+        'bw':0, 
+        'pm':0,
+        'fom':0
+    }
 
-    for spec in ['gain', 'bw', 'pm', 'fom']:
+    for spec in specs:
+        print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
+
+        print('='*50)
+        print(f"\n\nSpec: {spec}")
+
         rawPerfMatrix = df[[spec]].values
         perfMeans = rawPerfMatrix.mean(axis=0)
         perfSTD = rawPerfMatrix.std(axis=0)
@@ -137,15 +148,17 @@ def main():
         for i, circuit in enumerate(parsedDataset):
             convertedData.append(subGParser.toDataObject(authorFormat=circuit, performanceTargets=normalizedPerfs[i]))
         
-        results = []
-        print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
+
+        results = {'GCN':[], 'GAT':[], 'SAGE':[]}
 
         for i in range(args.reps):
-            
+            print(f"\nRep: {i + 1}")
 
             models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0])]
 
-            for model in models:
+            for i, model in enumerate(models):
+                print(f"\nModel: {modelTypes[i]}")
+
                 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
                 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
@@ -159,7 +172,6 @@ def main():
                 # if (i > 0):
                 #     model.reset_weights() 
 
-                print(f"\nRep: {i + 1}")
                 for epoch in range(args.epochs):
                     trainLoss = train(trainLoader, epoch, model, optimizer)
                     testLoss = test(testLoader, model)
@@ -171,7 +183,8 @@ def main():
                         if ((epoch + 1) % 5 == 0) or ((epoch + 1) == 1):
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                     if ((epoch + 1) == args.epochs):
-                        results.append([trainLoss, testLoss])
+                        print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
+                        results[modelTypes[i]].append(testLoss)
 
                     epochLoss.append(testLoss)
                     epochLst.append(epoch + 1)
@@ -196,8 +209,10 @@ def main():
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                             print(f"Autostop applied due to {'consecutive loss increase' if (consecInc >= 7) else 'threshold'}")
                             print(f"Lowest Test Loss: {min(epochLoss)}")
-                            results.append([trainLoss, testLoss])
+                            results[modelTypes[i]].append(testLoss)
                             break
+
+
 
             if (args.graph):
                 plt.figure(figsize=(8, 6))
@@ -209,18 +224,15 @@ def main():
                 plt.savefig(f"Test Loss Rep {i}", dpi=300)
                 # plt.show()
 
+        for i in range(len(results)):
+            results[modelTypes[i]] = sum(results[modelTypes[i]]) / len(results[modelTypes[i]])
         
-        print('\n')
-        print('='*50)
-        print("RESULTS")
-        print('='*50)
-        for i, lst in enumerate(results):
-            print(f"Rep {i + 1}:\n    Final Train Loss: {lst[0]}\n    Final Test Loss: {lst[1]}")
+        summary[spec] = results
 
-        print('\n')
-        print(f"Avg Train Loss: {sum([i[0] for i in results])/len(results)}\nAvg Test Loss: {sum([i[1] for i in results])/len(results)}")
-        print('='*50)
-
+    for spec in summary.keys():
+        print('\n' + spec)
+        for model in summary[spec].keys():
+            print(f"{model} Average Test Loss: {summary[spec][model]}")
 
 if (__name__ == "__main__"):
     main()
