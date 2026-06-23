@@ -137,10 +137,12 @@ def main():
         else:
             print(f"{modelPath} already exists")
 
-
     for spec in specs:
+        print('\n\n')
+
         print('='*50)
-        print(f"\n\nSpec: {spec.upper()}")
+        print(f"Spec: {spec.upper()}")
+        print('='*50)
 
         rawPerfMatrix = df[[spec]].values
         perfMeans = rawPerfMatrix.mean(axis=0)
@@ -165,6 +167,7 @@ def main():
 
         for rep in range(args.reps):
             print(f"\nRep: {rep + 1}")
+            print('_'*50)
 
             models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0])]
 
@@ -246,37 +249,55 @@ def main():
     #     for model in summary[spec].keys():
     #         print(f"{model} Average Test Loss: {summary[spec][model]}")
     
+    print('\n\n')
     print('='*50)
     print("RESULTS")
     print('='*50)
 
     dataTable = pd.DataFrame(data=summary, index=modelTypes)
-    print('\n\n')
     print(dataTable)
-    print('\n\n')
 
     print('='*50)
 
     if (args.graph):
-        path  = os.path.join(folderName, "Model Comparison.png")
+        path = os.path.join(folderName, "Model Comparison.png")
 
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
-        dataTable['bw'].plot(ax=axes[0][1])
-        dataTable['pm'].plot(ax=axes[1][0])
-        dataTable['fom'].plot(ax=axes[1][1])
 
-        plt.title("Gain")
-        sns.barplot(data=dataTable['gain'], ax=axes[0][0])
+        sns.barplot(x=dataTable['gain'].index, y=dataTable['gain'].values, ax=axes[0][0], palette='viridis', hue=dataTable['gain'].index, legend=False)
+        axes[0][0].set_title("Gain", fontsize=14)
+        g_min = dataTable['gain'].values.min() - 0.05
+        g_max = dataTable['gain'].values.max() + 0.05
+        axes[0][0].set_ylim(g_min, g_max)
+        axes[0][0].set_xlabel("Architecture", fontsize=10)
+        axes[0][0].set_ylabel("Loss", fontsize=10)
 
-        plt.title("BW")
-        sns.barplot(data=dataTable['bw'], ax=axes[0][1])
+        sns.barplot(x=dataTable['bw'].index, y=dataTable['bw'].values, ax=axes[0][1], palette='viridis', hue=dataTable['bw'].index, legend=False)
+        axes[0][1].set_title("BW", fontsize=14)
+        b_min = dataTable['bw'].values.min() - 0.05
+        b_max = dataTable['bw'].values.max() + 0.05
+        axes[0][1].set_ylim(b_min, b_max)
+        axes[0][1].set_xlabel("Architecture", fontsize=10)
+        axes[0][1].set_ylabel("Loss", fontsize=10)
 
-        plt.title("PM")
-        sns.barplot(data=dataTable['pm'], ax=axes[1][0])
+        sns.barplot(x=dataTable['pm'].index, y=dataTable['pm'].values, ax=axes[1][0], palette='viridis', hue=dataTable['pm'].index, legend=False)
+        axes[1][0].set_title("PM", fontsize=14)
+        p_min = dataTable['pm'].values.min() - 0.05
+        p_max = dataTable['pm'].values.max() + 0.05
+        axes[1][0].set_ylim(p_min, p_max)
+        axes[1][0].set_xlabel("Architecture", fontsize=10)
+        axes[1][0].set_ylabel("Loss", fontsize=10)
 
-        plt.title("FoM")
-        sns.barplot(data=dataTable['fom'], ax=axes[1][1])
+        sns.barplot(x=dataTable['fom'].index, y=dataTable['fom'].values, ax=axes[1][1], palette='viridis', hue=dataTable['fom'].index, legend=False)
+        axes[1][1].set_title("FoM", fontsize=14)
+        f_min = dataTable['fom'].values.min() - 0.05
+        f_max = dataTable['fom'].values.max() + 0.05
+        axes[1][1].set_ylim(f_min, f_max)
+        axes[1][1].set_xlabel("Architecture", fontsize=10)
+        axes[1][1].set_ylabel("Loss", fontsize=10)
 
+        plt.tight_layout()
+        
         plt.savefig(path, dpi=300)
         plt.close()
         print("\n\nSuccess")
