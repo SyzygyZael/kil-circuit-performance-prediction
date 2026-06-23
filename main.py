@@ -11,6 +11,7 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 from VarModels import GATwMLPHead, GCNwMLPHead, SAGEwMLPHead
+import os
 
 parser = argparse.ArgumentParser(description="Train a practice GCN model on Enzyme data")
 parser.add_argument('--epochs', type=int, default=100)
@@ -112,23 +113,34 @@ def initSAGE(data):
     return model, optimizer, scheduler
 
 def main():
+    print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
+
     cktPath = "C:/Users/Kevin Nesbitt/Documents/Coding/Python/KIL/CktGNN Clone/CktGNN/OCB/CktBench101"
     df = pd.read_csv(cktPath + "/perform101.csv")
 
     specs = ['gain', 'bw', 'pm', 'fom']
     modelTypes = ['GCN', 'GAT', 'SAGE']
     summary = {
-        'gain':0, 
-        'bw':0, 
-        'pm':0,
-        'fom':0
+        'gain':[], 
+        'bw':[], 
+        'pm':[],
+        'fom':[]
     }
 
-    for spec in specs:
-        print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
+    for modelName in modelTypes:
+        folderName = "graphs"
+        modelPath = os.path.join(folderName, modelName)
 
+        if not os.path.exists(modelPath):
+            os.makedirs(modelPath)
+            print(f"File Created at {modelPath}\n\n")
+        else:
+            print(f"{modelPath} already exists")
+
+
+    for spec in specs:
         print('='*50)
-        print(f"\n\nSpec: {spec}")
+        print(f"\n\nSpec: {spec.upper()}")
 
         rawPerfMatrix = df[[spec]].values
         perfMeans = rawPerfMatrix.mean(axis=0)
@@ -151,8 +163,8 @@ def main():
 
         results = {'GCN':[], 'GAT':[], 'SAGE':[]}
 
-        for i in range(args.reps):
-            print(f"\nRep: {i + 1}")
+        for rep in range(args.reps):
+            print(f"\nRep: {rep + 1}")
 
             models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0])]
 
@@ -211,28 +223,64 @@ def main():
                             print(f"Lowest Test Loss: {min(epochLoss)}")
                             results[modelTypes[i]].append(testLoss)
                             break
-
-
-
-            if (args.graph):
-                plt.figure(figsize=(8, 6))
-                plt.title("Test Loss", fontsize = 18)
-                plt.ylabel("Loss", fontsize=18)
-                plt.xlabel("Epoch", fontsize=18)
                 
-                sns.regplot(x = epochLst, y = epochLoss, order=2)
-                plt.savefig(f"Test Loss Rep {i}", dpi=300)
-                # plt.show()
+                if (args.graph):
+                    fileName = f"{modelTypes[i]} Test Loss Rep {rep + 1}.png"
+
+                    filePath = os.path.join(folderName, modelTypes[i], fileName)
+
+                    plt.figure(figsize=(8, 6))
+                    plt.title(f"{modelTypes[i]} Test Loss Rep {rep + 1}", fontsize = 18)
+                    plt.ylabel("Loss", fontsize=18)
+                    plt.xlabel("Epoch", fontsize=18)
+                    
+                    sns.regplot(x = epochLst, y = epochLoss, order=2 if (args.epochs >= 10) else 1)
+                    plt.savefig(filePath, dpi=300)
+                    # plt.show()
 
         for i in range(len(results)):
-            results[modelTypes[i]] = sum(results[modelTypes[i]]) / len(results[modelTypes[i]])
-        
-        summary[spec] = results
+            summary[spec].append(sum(results[modelTypes[i]]) / len(results[modelTypes[i]]))
 
-    for spec in summary.keys():
-        print('\n' + spec)
-        for model in summary[spec].keys():
-            print(f"{model} Average Test Loss: {summary[spec][model]}")
+    # for spec in summary.keys():
+    #     print('\n' + spec.upper())
+    #     for model in summary[spec].keys():
+    #         print(f"{model} Average Test Loss: {summary[spec][model]}")
+    
+    print('='*50)
+    print("RESULTS")
+    print('='*50)
+
+    dataTable = pd.DataFrame(data=summary, index=modelTypes)
+    print('\n\n')
+    print(dataTable)
+    print('\n\n')
+
+    print('='*50)
+
+    if (args.graph):
+        path  = os.path.join(folderName, "Model Comparison.png")
+
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
+        dataTable['bw'].plot(ax=axes[0][1])
+        dataTable['pm'].plot(ax=axes[1][0])
+        dataTable['fom'].plot(ax=axes[1][1])
+
+        plt.title("Gain")
+        sns.barplot(data=dataTable['gain'], ax=axes[0][0])
+
+        plt.title("BW")
+        sns.barplot(data=dataTable['bw'], ax=axes[0][1])
+
+        plt.title("PM")
+        sns.barplot(data=dataTable['pm'], ax=axes[1][0])
+
+        plt.title("FoM")
+        sns.barplot(data=dataTable['fom'], ax=axes[1][1])
+
+        plt.savefig(path, dpi=300)
+        plt.close()
+        print("\n\nSuccess")
+
 
 if (__name__ == "__main__"):
     main()
