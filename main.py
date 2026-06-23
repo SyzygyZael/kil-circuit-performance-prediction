@@ -36,6 +36,18 @@ print(f"Device: {device}\n")
 lossFn = torch.nn.MSELoss()
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
+def mapeLoss(pred, target, perfMean, perfSTD, eps=1e-8):
+    pred = pred.view_as(target)
+
+    perfMean = torch.as_tensor(perfMean, dtype=pred.dtype, device=pred.device)
+    perfSTD = torch.as_tensor(perfSTD, dtype=pred.dtype, device=pred.device)
+
+    predOriginal = pred * perfSTD + perfMean
+    targetOriginal = target * perfSTD + perfMean
+
+    denom = targetOriginal.abs().clamp_min(eps)
+    return ((predOriginal - targetOriginal).abs() / denom).mean() * 100
+
 # training loop
 def train(loader, curEpoch, model, optimizer):
     # switch model to training mode
@@ -67,18 +79,23 @@ def train(loader, curEpoch, model, optimizer):
     return total_loss / len(loader.dataset)
 
 # test loop
-def test(loader, model):
+def test(loader, model, perfMean, perfSTD):
     # switch model to evaluation mode
     model.eval()
     totalLoss = 0
+    totalMAPE = 0
 
     with torch.no_grad():
         for i in loader:
             pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
             loss = lossFn(pred, i.y.to(device))
             totalLoss += loss.item() * i.num_graphs
-    
-    return totalLoss / len(loader.dataset)
+            totalMAPE += mape.item() * i.num_graphs
+
+    avgLoss = totalLoss / len(loader.dataset)
+    avgMAPE = totalMAPE / len(loader.dataset)
+
+    return avgLoss, avgMAPE
 
 def shuffleDataset(data):
     # shuffle data
