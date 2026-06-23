@@ -10,6 +10,7 @@ from CktGNNSubGParser import CktGNNSubGParser as cph
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
+import json
 from VarModels import GATwMLPHead, GCNwMLPHead, SAGEwMLPHead
 import os
 
@@ -115,7 +116,11 @@ def initSAGE(data):
 def main():
     print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n\n")
 
-    cktPath = "C:/Users/Kevin Nesbitt/Documents/Coding/Python/KIL/CktGNN Clone/CktGNN/OCB/CktBench101"
+    with open("config.json") as f:
+        config = json.load(f)
+
+    cktPath = config["data_path"]
+
     df = pd.read_csv(cktPath + "/perform101.csv")
 
     specs = ['gain', 'bw', 'pm', 'fom']
