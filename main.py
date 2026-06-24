@@ -1,3 +1,15 @@
+import os
+import sys
+import json
+
+if (os.path.exists('C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')):
+    with open("config.json") as f:
+            config = json.load(f)
+
+    libPath = config["lib_path"]
+    sys.path.append(r'C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')
+    f.close()
+
 import argparse
 from torch_geometric.datasets import TUDataset
 import torch.nn.functional
@@ -10,9 +22,7 @@ from CktGNNSubGParser import CktGNNSubGParser as cph
 import random
 import matplotlib.pyplot as plt
 import seaborn as sns
-import json
-from VarModels import GATwMLPHead, GCNwMLPHead, SAGEwMLPHead
-import os
+from VarModels import *
 
 parser = argparse.ArgumentParser(description="Train a practice GCN model on Enzyme data")
 parser.add_argument('--epochs', type=int, default=100)
@@ -47,6 +57,12 @@ def mapeLoss(pred, target, perfMean, perfSTD, eps=1e-8):
 
     denom = targetOriginal.abs().clamp_min(eps)
     return ((predOriginal - targetOriginal).abs() / denom).mean() * 100
+
+def r2Score(pred, target):
+    pred = pred.view_as(target)
+    ss_res = ((target - pred) ** 2).sum()
+    ss_tot = ((target - target.mean()) ** 2).sum()
+    return 1 - ss_res / ss_tot
 
 # training loop
 def train(loader, curEpoch, model, optimizer):
@@ -84,18 +100,24 @@ def test(loader, model, perfMean, perfSTD):
     model.eval()
     totalLoss = 0
     totalMAPE = 0
+    totalR2 = 0
 
     with torch.no_grad():
         for i in loader:
             pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
             loss = lossFn(pred, i.y.to(device))
+            mape = mapeLoss(pred, i.y.to(device), perfMean, perfSTD)
+            r2 = r2Score(pred, i.y.to(device))
+
             totalLoss += loss.item() * i.num_graphs
             totalMAPE += mape.item() * i.num_graphs
+            totalR2 += r2.item() * i.num_graphs
 
     avgLoss = totalLoss / len(loader.dataset)
     avgMAPE = totalMAPE / len(loader.dataset)
+    avgR2 = totalR2 / len(loader.dataset)
 
-    return avgLoss, avgMAPE
+    return avgLoss, avgMAPE, avgR2
 
 def shuffleDataset(data):
     # shuffle data
@@ -124,7 +146,7 @@ def main():
     df = pd.read_csv(cktPath + "/perform101.csv")
 
     specs = ['gain', 'bw', 'pm', 'fom']
-    modelTypes = ['GCN', 'GAT', 'SAGE']
+    modelTypes = ['GCN', 'GAT', 'SAGE', 'GIN']
     summary = {
         'gain':[], 
         'bw':[], 
@@ -165,16 +187,16 @@ def main():
 
         convertedData = []
         for i, circuit in enumerate(parsedDataset):
-            convertedData.append(subGParser.toDataObject(authorFormat=circuit, performanceTargets=normalizedPerfs[i]))
+            convertedData.append(pre_transform(subGParser.toDataObject(authorFormat=circuit, performanceTargets=normalizedPerfs[i])))
         
 
-        results = {'GCN':[], 'GAT':[], 'SAGE':[]}
+        results = {'GCN':[], 'GAT':[], 'SAGE':[], 'GIN':[]}
 
         for rep in range(args.reps):
-            print(f"\nRep: {rep + 1}")
+            print(f"\nRep: {rep + 1}" if (args.reps > 1) else "")
             print('_'*50)
 
-            models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0])]
+            models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0]), GINwMLPHead(convertedData[0])]
 
             for i, model in enumerate(models):
                 print(f"\nModel: {modelTypes[i]}")
@@ -196,7 +218,7 @@ def main():
 
                 for epoch in range(args.epochs):
                     trainLoss = train(trainLoader, epoch, model, optimizer)
-                    testLoss = test(testLoader, model)
+                    testLoss, mapeLoss, R2Loss = test(testLoader, model, perfMeans, perfSTD)
 
                     # cuts lr by half if model does not improve after 10 epochs
                     scheduler.step(testLoss)
@@ -206,7 +228,7 @@ def main():
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                     if ((epoch + 1) == args.epochs):
                         print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
-                        results[modelTypes[i]].append(testLoss)
+                        results[modelTypes[i]].append(R2Loss)
 
                     epochLoss.append(testLoss)
                     epochLst.append(epoch + 1)
@@ -231,7 +253,7 @@ def main():
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                             print(f"Autostop applied due to {'consecutive loss increase' if (consecInc >= 7) else 'threshold'}")
                             print(f"Lowest Test Loss: {min(epochLoss)}")
-                            results[modelTypes[i]].append(testLoss)
+                            results[modelTypes[i]].append(R2Loss)
                             break
                 
                 if (args.graph):
