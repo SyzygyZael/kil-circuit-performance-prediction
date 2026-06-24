@@ -158,11 +158,11 @@ def main():
         folderName = "graphs"
         modelPath = os.path.join(folderName, modelName)
 
-        if not os.path.exists(modelPath):
-            os.makedirs(modelPath)
-            print(f"File Created at {modelPath}\n\n")
-        else:
-            print(f"{modelPath} already exists")
+        # if not os.path.exists(modelPath):
+        os.makedirs(modelPath)
+        print(f"File Created at {modelPath}\n\n")
+        # else:
+        #     print(f"{modelPath} already exists")
 
     for spec in specs:
         print('\n\n')
