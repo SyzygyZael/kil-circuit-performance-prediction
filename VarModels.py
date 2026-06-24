@@ -4,7 +4,7 @@ from torch_geometric.nn import GATConv, global_mean_pool, global_max_pool, GCNCo
 import torch
 
 class GCNwMLPHead(nn.Module):
-    def __init__(self, dataset):
+    def __init__(self, dataset, num_classes = 1):
         super().__init__()
 
         self.layer1 = GCNConv(dataset.num_node_features, 128)
@@ -14,7 +14,7 @@ class GCNwMLPHead(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(p = 0.2),
-            nn.Linear(32, 1)
+            nn.Linear(32, num_classes)
         )
     
     def forward(self, x, batch, edge_index):
@@ -26,7 +26,7 @@ class GCNwMLPHead(nn.Module):
         return self.mlp(x)
 
 class GATwMLPHead(nn.Module):
-    def __init__(self, dataset):
+    def __init__(self, dataset, num_classes = 1):
         super().__init__()
 
         self.layer1 = GATConv(dataset.num_node_features, 128)
@@ -36,7 +36,7 @@ class GATwMLPHead(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(p = 0.2),
-            nn.Linear(32, 1)
+            nn.Linear(32, num_classes)
         )
     
     def forward(self, x, batch, edge_index):
@@ -48,7 +48,7 @@ class GATwMLPHead(nn.Module):
         return self.mlp(x)
 
 class SAGEwMLPHead(nn.Module):
-    def __init__(self, dataset):
+    def __init__(self, dataset, num_classes = 1):
         super().__init__()
 
         self.layer1 = SAGEConv(dataset.num_node_features, 128)
@@ -58,7 +58,7 @@ class SAGEwMLPHead(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(p = 0.2),
-            nn.Linear(32, 1)
+            nn.Linear(32, num_classes)
         )
     
     def forward(self, x, batch, edge_index):
@@ -70,7 +70,7 @@ class SAGEwMLPHead(nn.Module):
         return self.mlp(x)
 
 class GINwMLPHead(nn.Module):
-    def __init__(self, dataset):
+    def __init__(self, dataset, num_classes = 1):
         super().__init__()
 
         nn1 = nn.Sequential(nn.Linear(dataset.num_node_features, 128), nn.ReLU())
@@ -83,7 +83,7 @@ class GINwMLPHead(nn.Module):
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(p = 0.2),
-            nn.Linear(32, 1)
+            nn.Linear(32, num_classes)
         )
     
     def forward(self, x, batch, edge_index):

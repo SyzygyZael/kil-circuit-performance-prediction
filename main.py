@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import shutil
 
 if (os.path.exists('C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')):
     with open("config.json") as f:
@@ -44,6 +45,7 @@ print(f"Device: {device}\n")
 # model = CircuitModel(convertedData[0])
 # optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 lossFn = torch.nn.MSELoss()
+lossFn_cls = torch.nn.CrossEntropyLoss()
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
 def mapeLoss(pred, target, perfMean, perfSTD, eps=1e-8):
@@ -65,7 +67,7 @@ def r2Score(pred, target):
     return 1 - ss_res / ss_tot
 
 # training loop
-def train(loader, curEpoch, model, optimizer):
+def train(loader, curEpoch, model, optimizer, spec):
     # switch model to training mode
     model.train()
     total_loss = 0
@@ -80,7 +82,10 @@ def train(loader, curEpoch, model, optimizer):
         pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
 
         # performs MSE loss
-        loss = lossFn(pred, i.y.to(device))
+        if (spec != 'pm'):
+            loss = lossFn(pred, i.y.to(device))
+        else:
+            loss = lossFn_cls(pred, i.y.to(device).view(-1).long())
 
         # computes gradients of the loss with respect to each weight
         loss.backward()
@@ -118,6 +123,18 @@ def test(loader, model, perfMean, perfSTD):
     avgR2 = totalR2 / len(loader.dataset)
 
     return avgLoss, avgMAPE, avgR2
+
+def testCls(loader, model):
+    model.eval()
+    totalLoss = 0
+    correct = 0
+    with torch.no_grad():
+        for i in loader:
+            pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
+            loss = lossFn_cls(pred, i.y.to(device).view(-1).long())
+            totalLoss += loss.item() * i.num_graphs
+            correct += (pred.argmax(dim=1) == i.y.to(device).view(-1).long()).sum().item()
+    return totalLoss / len(loader.dataset), correct / len(loader.dataset)
 
 def shuffleDataset(data):
     # shuffle data
@@ -158,11 +175,13 @@ def main():
         folderName = "graphs"
         modelPath = os.path.join(folderName, modelName)
 
-        # if not os.path.exists(modelPath):
-        os.makedirs(modelPath)
-        print(f"File Created at {modelPath}\n\n")
-        # else:
-        #     print(f"{modelPath} already exists")
+        if (os.path.exists(modelPath)):
+            shutil.rmtree(modelPath)
+            print(f"Folder {modelPath} has been reset")
+        else:
+            print(f"File Created at {modelPath}\n\n")
+        
+        os.makedirs(modelPath, exist_ok=True)
 
     for spec in specs:
         print('\n\n')
@@ -171,11 +190,14 @@ def main():
         print(f"Spec: {spec.upper()}")
         print('='*50)
 
-        rawPerfMatrix = df[[spec]].values
-        perfMeans = rawPerfMatrix.mean(axis=0)
-        perfSTD = rawPerfMatrix.std(axis=0)
+        if (spec != 'pm'):
+            rawPerfMatrix = df[[spec]].values
+            perfMeans = rawPerfMatrix.mean(axis=0)
+            perfSTD = rawPerfMatrix.std(axis=0)
 
-        normalizedPerfs = (rawPerfMatrix - perfMeans) / perfSTD
+            normalizedPerfs = (rawPerfMatrix - perfMeans) / perfSTD
+        else:
+            normalizedPerfs = df['pm'].round(0).astype(int).clip(0, 4).values
 
         subGParser = cph(cktPath)
         rawData = subGParser.getRawData()
@@ -196,7 +218,8 @@ def main():
             print(f"\nRep: {rep + 1}" if (args.reps > 1) else "")
             print('_'*50)
 
-            models = [GCNwMLPHead(convertedData[0]), GATwMLPHead(convertedData[0]), SAGEwMLPHead(convertedData[0]), GINwMLPHead(convertedData[0])]
+            numClasses = 5 if (spec == 'pm') else 1
+            models = [GCNwMLPHead(convertedData[0], num_classes=numClasses), GATwMLPHead(convertedData[0], num_classes=numClasses), SAGEwMLPHead(convertedData[0], num_classes=numClasses), GINwMLPHead(convertedData[0], num_classes=numClasses)]
 
             for i, model in enumerate(models):
                 print(f"\nModel: {modelTypes[i]}")
@@ -217,8 +240,12 @@ def main():
                 #     model.reset_weights() 
 
                 for epoch in range(args.epochs):
-                    trainLoss = train(trainLoader, epoch, model, optimizer)
-                    testLoss, mapeLoss, R2Loss = test(testLoader, model, perfMeans, perfSTD)
+                    trainLoss = train(trainLoader, epoch, model, optimizer, spec)
+
+                    if (spec != 'pm'):
+                        testLoss, mapeLoss, R2Loss = test(testLoader, model, perfMeans, perfSTD)
+                    else:
+                        testLoss, R2Loss = testCls(testLoader, model)
 
                     # cuts lr by half if model does not improve after 10 epochs
                     scheduler.step(testLoss)
