@@ -3,13 +3,13 @@ import sys
 import json
 import shutil
 
-if (os.path.exists('C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')):
-    with open("config.json") as f:
-            config = json.load(f)
+# if (os.path.exists('C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')):
+#     with open("config.json") as f:
+#             config = json.load(f)
 
-    libPath = config["lib_path"]
-    sys.path.append(r'C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')
-    f.close()
+#     libPath = config["lib_path"]
+#     sys.path.append(r'C:/Users/herok/Documents/Coding/Python/CKTGNN/kil-circuit-performance-prediction/libs')
+#     f.close()
 
 import argparse
 from torch_geometric.datasets import TUDataset
@@ -24,6 +24,7 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 from VarModels import *
+from datetime import datetime
 
 parser = argparse.ArgumentParser(description="Train a practice GCN model on Enzyme data")
 parser.add_argument('--epochs', type=int, default=100)
@@ -33,6 +34,7 @@ parser.add_argument('--reps', type=int, default=1)
 parser.add_argument('--threshold', type=float, default=0.0)
 parser.add_argument('--graph', type=bool, default=False)
 parser.add_argument('--gpu', type=bool, default=False)
+parser.add_argument('--r2ORmape', type=str, default='mape')
 
 args = parser.parse_args()
 
@@ -48,17 +50,21 @@ lossFn = torch.nn.MSELoss()
 lossFn_cls = torch.nn.CrossEntropyLoss()
 # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
-def mapeLoss(pred, target, perfMean, perfSTD, eps=1e-8):
+def mapeLoss(pred, target, mean, std, eps=0.1):
     pred = pred.view_as(target)
-
-    perfMean = torch.as_tensor(perfMean, dtype=pred.dtype, device=pred.device)
-    perfSTD = torch.as_tensor(perfSTD, dtype=pred.dtype, device=pred.device)
-
-    predOriginal = pred * perfSTD + perfMean
-    targetOriginal = target * perfSTD + perfMean
-
-    denom = targetOriginal.abs().clamp_min(eps)
-    return ((predOriginal - targetOriginal).abs() / denom).mean() * 100
+    
+    mean = torch.tensor(mean, dtype=pred.dtype, device=pred.device)
+    std = torch.tensor(std, dtype=pred.dtype, device=pred.device)
+    
+    predOrig = pred * std + mean
+    targetOrig = target * std + mean
+    
+    # clip targets that are too close to zero
+    mask = targetOrig.abs() > (std * 0.1)
+    if mask.sum() == 0:
+        return torch.tensor(0.0)
+    
+    return ((predOrig[mask] - targetOrig[mask]).abs() / targetOrig[mask].abs()).mean() * 100
 
 def r2Score(pred, target):
     pred = pred.view_as(target)
@@ -100,7 +106,7 @@ def train(loader, curEpoch, model, optimizer, spec):
     return total_loss / len(loader.dataset)
 
 # test loop
-def test(loader, model, perfMean, perfSTD):
+def test(loader, model, stats, spec):
     # switch model to evaluation mode
     model.eval()
     totalLoss = 0
@@ -111,7 +117,7 @@ def test(loader, model, perfMean, perfSTD):
         for i in loader:
             pred = model(i.x.to(device), i.batch.to(device), i.edge_index.to(device))
             loss = lossFn(pred, i.y.to(device))
-            mape = mapeLoss(pred, i.y.to(device), perfMean, perfSTD)
+            mape = mapeLoss(pred, i.y.to(device), stats[spec]['mean'], stats[spec]['std'])
             r2 = r2Score(pred, i.y.to(device))
 
             totalLoss += loss.item() * i.num_graphs
@@ -153,7 +159,7 @@ def shuffleDataset(data):
     return train_loader, test_loader
 
 def main():
-    print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n--gpu {args.gpu}\n\n")
+    print(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n--gpu {args.gpu}\n--r2ORmape {args.r2ORmape}\n\n")
 
     with open("config.json") as f:
         config = json.load(f)
@@ -161,6 +167,9 @@ def main():
     cktPath = config["data_path"]
 
     df = pd.read_csv(cktPath + "/perform101.csv")
+
+    # for spec in ['gain', 'bw', 'fom']:
+    #     print(f"{spec}: mean={df[spec].mean():.4f}, std={df[spec].std():.4f}")
 
     specs = ['gain', 'bw', 'pm', 'fom']
     modelTypes = ['GCN', 'GAT', 'SAGE', 'GIN']
@@ -183,12 +192,16 @@ def main():
         
         os.makedirs(modelPath, exist_ok=True)
 
+    perfStats = {}
     for spec in specs:
         print('\n\n')
 
         print('='*50)
         print(f"Spec: {spec.upper()}")
         print('='*50)
+
+        col = df[spec]
+        perfStats[spec] = {'mean': col.mean(), 'std': col.std()}
 
         if (spec != 'pm'):
             rawPerfMatrix = df[[spec]].values
@@ -243,9 +256,9 @@ def main():
                     trainLoss = train(trainLoader, epoch, model, optimizer, spec)
 
                     if (spec != 'pm'):
-                        testLoss, mapeLoss, R2Loss = test(testLoader, model, perfMeans, perfSTD)
+                        testLoss, testMape, testR2 = test(testLoader, model, perfStats, spec)
                     else:
-                        testLoss, R2Loss = testCls(testLoader, model)
+                        testLoss, testR2 = testCls(testLoader, model)
 
                     # cuts lr by half if model does not improve after 10 epochs
                     scheduler.step(testLoss)
@@ -255,7 +268,7 @@ def main():
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                     if ((epoch + 1) == args.epochs):
                         print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
-                        results[modelTypes[i]].append(R2Loss)
+                        results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMape)
 
                     epochLoss.append(testLoss)
                     epochLst.append(epoch + 1)
@@ -280,7 +293,7 @@ def main():
                             print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
                             print(f"Autostop applied due to {'consecutive loss increase' if (consecInc >= 7) else 'threshold'}")
                             print(f"Lowest Test Loss: {min(epochLoss)}")
-                            results[modelTypes[i]].append(R2Loss)
+                            results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMape)
                             break
                 
                 if (args.graph):
@@ -299,7 +312,10 @@ def main():
                     # plt.show()
 
         for i in range(len(results)):
-            summary[spec].append(sum(results[modelTypes[i]]) / len(results[modelTypes[i]]))
+            val = sum(results[modelTypes[i]]) / len(results[modelTypes[i]])
+            if spec == 'pm' and args.r2ORmape == 'mape':
+                val *= 100
+            summary[spec].append(val)
 
     # for spec in summary.keys():
     #     print('\n' + spec.upper())
@@ -313,6 +329,18 @@ def main():
 
     dataTable = pd.DataFrame(data=summary, index=modelTypes)
     print(dataTable)
+
+    resultsPath = os.path.join("results", f"results_{datetime.now()}.txt")
+    if (not os.path.exists('results')):
+        os.makedirs('results')
+        
+    with open(resultsPath, "w") as f:
+        f.write(f"--epochs {args.epochs}\n--lr {args.lr}\n--batch {args.batch}\n--reps {args.reps}\n--threshold {autoStop[0]}\n--gpu {args.gpu}\n--r2ORmape {args.r2ORmape}\n\n")
+        f.write("="*50 + "\n")
+        f.write("RESULTS\n")
+        f.write("="*50 + "\n")
+        f.write(dataTable.to_string())
+        f.write("\n" + "="*50 + "\n")
 
     print('='*50)
 
