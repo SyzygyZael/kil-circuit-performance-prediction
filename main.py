@@ -256,7 +256,7 @@ def main():
                     trainLoss = train(trainLoader, epoch, model, optimizer, spec)
 
                     if (spec != 'pm'):
-                        testLoss, testMape, testR2 = test(testLoader, model, perfStats, spec)
+                        testLoss, testMAPE, testR2 = test(testLoader, model, perfStats, spec)
                     else:
                         testLoss, testR2 = testCls(testLoader, model)
 
@@ -265,10 +265,10 @@ def main():
 
                     if (args.epochs > 10) or ((epoch + 1) == 1):
                         if ((epoch + 1) % 5 == 0) or ((epoch + 1) == 1):
-                            print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
+                            print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}, Test MAPE {testMAPE:.2f}%")
                     if ((epoch + 1) == args.epochs):
                         print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
-                        results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMape)
+                        results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMAPE)
 
                     epochLoss.append(testLoss)
                     epochLst.append(epoch + 1)
@@ -290,10 +290,10 @@ def main():
                             else:
                                 consec = 0
                         if (consec >= 5 or consecInc >= 7):
-                            print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}")
+                            print(f"Epoch {epoch + 1}/{args.epochs}: Train Loss {trainLoss:.4f}, Test Loss {testLoss:.4f}, Test MAPE {testMAPE:.2f}%")
                             print(f"Autostop applied due to {'consecutive loss increase' if (consecInc >= 7) else 'threshold'}")
                             print(f"Lowest Test Loss: {min(epochLoss)}")
-                            results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMape)
+                            results[modelTypes[i]].append(testR2 if (args.r2ORmape == 'r2' or spec == 'pm') else testMAPE)
                             break
                 
                 if (args.graph):
@@ -324,7 +324,7 @@ def main():
     
     print('\n\n')
     print('='*50)
-    print("RESULTS")
+    print("RESULTS - MSE Loss")
     print('='*50)
 
     dataTable = pd.DataFrame(data=summary, index=modelTypes)
